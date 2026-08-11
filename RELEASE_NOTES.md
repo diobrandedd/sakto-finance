@@ -1,21 +1,22 @@
-# Sakto v1.0.0
+# Sakto v1.5.0
 
-The first public Android release of Sakto, an offline personal finance tracker.
+Appearance controls and full record editing for the offline personal finance tracker.
 
 ## Highlights
 
-- Track cash, bank, e-wallet, and card accounts
-- Record categorized income and expenses
-- Monitor loans and installment purchases
-- Track money lent to other people and mark repayments
-- Configure recurring income and view month-end forecasts
-- Review weekly, monthly, and custom date-range reports
-- Receive local due and overdue reminders
-- Export local data as a JSON backup
+- Color themes: Sakto, Night, Ocean, Forest, Sunset, and Lavender
+- Custom colors for background, cards, accent, and text
+- Optional gallery photo as the app background, with a dim slider
+- Tap any expense or income row to edit or delete it
+- Edit and delete credits, credit payments, lent money, and income sources
+- Account balances reverse and reapply so totals stay correct after a correction
+- Mark lent money unpaid if it was marked paid by mistake
 
 ## Install
 
-Download `sakto-v1.0.0.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
+Download `sakto-v1.5.0.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
+
+If Sakto is already installed, tap **Update**. Do not uninstall first if you want to keep existing records.
 
 ## Privacy
 

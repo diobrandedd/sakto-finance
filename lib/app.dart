@@ -1,11 +1,14 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'appearance/appearance.dart';
 import 'database/app_database.dart';
 import 'services/app_services.dart';
 import 'theme/app_theme.dart';
@@ -41,16 +44,39 @@ final money = NumberFormat.currency(
 );
 final shortDate = DateFormat('MMM d, y');
 
-class SaktoApp extends StatelessWidget {
+class SaktoApp extends ConsumerWidget {
   const SaktoApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Sakto',
-    debugShowCheckedModeBanner: false,
-    theme: buildAppTheme(),
-    home: const AppShell(),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appearance = ref.watch(appearanceProvider);
+    return MaterialApp(
+      title: 'Sakto',
+      debugShowCheckedModeBanner: false,
+      theme: buildAppTheme(
+        appearance.colors,
+        transparentScaffold: appearance.hasImage,
+      ),
+      builder: (context, child) {
+        final page = child ?? const SizedBox.shrink();
+        if (!appearance.hasImage) return page;
+        return Container(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: FileImage(File(appearance.imagePath!)),
+              fit: BoxFit.cover,
+              colorFilter: ColorFilter.mode(
+                Colors.black.withValues(alpha: appearance.imageDim),
+                BlendMode.darken,
+              ),
+            ),
+          ),
+          child: page,
+        );
+      },
+      home: const AppShell(),
+    );
+  }
 }
 
 class AppShell extends ConsumerStatefulWidget {
@@ -77,7 +103,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         child: IndexedStack(index: _index, children: pages),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.accent,
+        backgroundColor: context.sakto.accent,
         foregroundColor: Colors.white,
         onPressed: () => Navigator.of(
           context,
@@ -88,8 +114,8 @@ class _AppShellState extends ConsumerState<AppShell> {
       bottomNavigationBar: NavigationBar(
         height: 70,
         selectedIndex: _index,
-        backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.accentLight,
+        backgroundColor: context.sakto.surface,
+        indicatorColor: context.sakto.accentLight,
         onDestinationSelected: (value) {
           if (value == 2) {
             Navigator.of(context).push(
@@ -171,7 +197,7 @@ class EmptyState extends StatelessWidget {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, size: 46, color: AppColors.muted),
+        Icon(icon, size: 46, color: context.sakto.muted),
         const SizedBox(height: 12),
         Text(title, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 5),
@@ -184,6 +210,27 @@ class EmptyState extends StatelessWidget {
     ),
   );
 }
+
+Future<bool> confirmDelete(BuildContext context, String message) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this record?'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    ) ??
+    false;
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -361,12 +408,12 @@ class _BalanceDonutState extends State<_BalanceDonut> {
                 ),
                 decoration: BoxDecoration(
                   color: selected == index
-                      ? AppColors.surface
+                      ? context.sakto.surface
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: selected == index
-                        ? AppColors.border
+                        ? context.sakto.border
                         : Colors.transparent,
                   ),
                 ),
@@ -518,7 +565,7 @@ class _ForecastCardState extends State<_ForecastCard> {
                   _ForecastMetric(
                     'Month end',
                     projected,
-                    color: AppColors.accent,
+                    color: context.sakto.accent,
                   ),
                 ],
               ),
@@ -546,7 +593,7 @@ class _ForecastMetric extends StatelessWidget {
           child: Text(
             money.format(value),
             style: TextStyle(
-              color: color ?? AppColors.text,
+              color: color ?? context.sakto.text,
               fontWeight: FontWeight.w800,
               fontSize: 16,
             ),
@@ -589,7 +636,7 @@ class AccountsScreen extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: AppColors.accent,
+                      color: context.sakto.accent,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Column(
@@ -786,7 +833,8 @@ Future<void> _showAccountEditor(
 }
 
 class AddTransactionScreen extends ConsumerStatefulWidget {
-  const AddTransactionScreen({super.key});
+  const AddTransactionScreen({this.existing, super.key});
+  final MoneyTransaction? existing;
 
   @override
   ConsumerState<AddTransactionScreen> createState() =>
@@ -804,6 +852,28 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   bool saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    if (existing != null) {
+      amount.text = existing.amount.toStringAsFixed(2);
+      note.text = existing.note;
+      type = existing.type;
+      accountId = existing.accountId;
+      categoryId = existing.categoryId;
+      creditId = existing.source == 'credit_payment' ? existing.linkedId : null;
+      date = existing.date;
+    }
+  }
+
+  @override
+  void dispose() {
+    amount.dispose();
+    note.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final accounts = ref.watch(accountsProvider).valueOrNull ?? [];
     final categories = ref.watch(categoriesProvider(type)).valueOrNull ?? [];
@@ -813,7 +883,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
         .firstOrNull;
     final payingCredit = selectedCategory?.name == 'Pay credit';
     return Scaffold(
-      appBar: AppBar(title: const Text('Add transaction')),
+      appBar: AppBar(
+        title: Text(
+          widget.existing == null ? 'Add transaction' : 'Edit transaction',
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
@@ -918,10 +992,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           const SizedBox(height: 16),
           ListTile(
             shape: RoundedRectangleBorder(
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: context.sakto.border),
               borderRadius: BorderRadius.circular(12),
             ),
-            tileColor: AppColors.surface,
+            tileColor: context.sakto.surface,
             leading: const Icon(Icons.calendar_today_outlined),
             title: const Text('Date'),
             trailing: Text(shortDate.format(date)),
@@ -953,9 +1027,29 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
             ),
             child: Text(saving ? 'Saving…' : 'Save transaction'),
           ),
+          if (widget.existing != null)
+            TextButton(
+              onPressed: saving ? null : _delete,
+              child: const Text(
+                'Delete transaction',
+                style: TextStyle(color: AppColors.red),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _delete() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    final confirmed = await confirmDelete(
+      context,
+      'This reverses the amount on the account and removes the record.',
+    );
+    if (!confirmed) return;
+    await ref.read(databaseProvider).deleteTransaction(existing.id);
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _save() async {
@@ -973,25 +1067,50 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     }
     setState(() => saving = true);
     final database = ref.read(databaseProvider);
-    if (creditId != null && type == 'expense') {
-      await database.payCredit(
-        creditId: creditId!,
-        accountId: accountId!,
-        amount: value,
-        date: date,
-        categoryId: categoryId,
-      );
-    } else {
-      await database.addTransaction(
-        accountId: accountId!,
-        categoryId: categoryId,
-        type: type,
-        amount: value,
-        date: date,
-        note: note.text.trim(),
-      );
+    final payingCredit = creditId != null && type == 'expense';
+    final existing = widget.existing;
+    try {
+      if (existing == null) {
+        if (payingCredit) {
+          await database.payCredit(
+            creditId: creditId!,
+            accountId: accountId!,
+            amount: value,
+            date: date,
+            categoryId: categoryId,
+          );
+        } else {
+          await database.addTransaction(
+            accountId: accountId!,
+            categoryId: categoryId,
+            type: type,
+            amount: value,
+            date: date,
+            note: note.text.trim(),
+          );
+        }
+      } else {
+        await database.updateTransaction(
+          original: existing,
+          accountId: accountId!,
+          categoryId: categoryId,
+          type: type,
+          amount: value,
+          date: date,
+          note: note.text.trim(),
+          source: payingCredit ? 'credit_payment' : 'manual',
+          linkedId: payingCredit ? creditId : null,
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) {
+        setState(() => saving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$error')));
+      }
     }
-    if (mounted) Navigator.pop(context);
   }
 }
 
@@ -1023,6 +1142,11 @@ class _TransactionList extends StatelessWidget {
         return Column(
           children: [
             ListTile(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AddTransactionScreen(existing: row),
+                ),
+              ),
               leading: CircleAvatar(
                 backgroundColor: row.type == 'income'
                     ? AppColors.greenLight
@@ -1037,14 +1161,14 @@ class _TransactionList extends StatelessWidget {
                 ),
               ),
               title: Text(row.note.isEmpty ? row.type : row.note),
-              subtitle: Text(shortDate.format(row.date)),
+              subtitle: Text('${shortDate.format(row.date)}  •  tap to edit'),
               trailing: Text(
                 '${row.type == 'income' ? '+' : '−'}${money.format(row.amount)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: row.type == 'income'
                       ? AppColors.green
-                      : AppColors.text,
+                      : context.sakto.text,
                 ),
               ),
             ),
@@ -1118,7 +1242,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       const SizedBox(width: 8),
                       _ReportMetric('Added', added, AppColors.green),
                       const SizedBox(width: 8),
-                      _ReportMetric('Net', added - spent, AppColors.accent),
+                      _ReportMetric('Net', added - spent, context.sakto.accent),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -1224,7 +1348,7 @@ class MoreScreen extends StatelessWidget {
       ),
       (
         'Settings',
-        'Currency, notifications, and backup',
+        'Theme, background, notifications, and backup',
         Icons.settings_outlined,
         const SettingsScreen(),
       ),
@@ -1243,8 +1367,8 @@ class MoreScreen extends StatelessWidget {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(14),
                   leading: CircleAvatar(
-                    backgroundColor: AppColors.accentLight,
-                    foregroundColor: AppColors.accent,
+                    backgroundColor: context.sakto.accentLight,
+                    foregroundColor: context.sakto.accent,
                     child: Icon(item.$3),
                   ),
                   title: Text(
@@ -1306,7 +1430,8 @@ class CreditsScreen extends ConsumerWidget {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => CreditDetailScreen(summary),
+                            builder: (_) =>
+                                CreditDetailScreen(summary.credit.id),
                           ),
                         ),
                         child: Padding(
@@ -1330,6 +1455,15 @@ class CreditsScreen extends ConsumerWidget {
                                         ? AppColors.red
                                         : AppColors.green,
                                   ),
+                                  IconButton(
+                                    tooltip: 'Edit credit',
+                                    onPressed: () => _showCreditEditor(
+                                      context,
+                                      ref,
+                                      credit: summary.credit,
+                                    ),
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 14),
@@ -1337,7 +1471,7 @@ class CreditsScreen extends ConsumerWidget {
                                 value: summary.progress,
                                 minHeight: 7,
                                 borderRadius: BorderRadius.circular(8),
-                                backgroundColor: AppColors.border,
+                                backgroundColor: context.sakto.border,
                               ),
                               const SizedBox(height: 12),
                               Row(
@@ -1371,81 +1505,139 @@ class CreditsScreen extends ConsumerWidget {
 }
 
 class CreditDetailScreen extends ConsumerWidget {
-  const CreditDetailScreen(this.summary, {super.key});
-  final CreditSummary summary;
+  const CreditDetailScreen(this.creditId, {super.key});
+  final int creditId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: Text(summary.credit.name)),
-    body: StreamBuilder<List<CreditPayment>>(
-      stream: ref
-          .watch(databaseProvider)
-          .watchCreditPayments(summary.credit.id),
-      builder: (context, snapshot) {
-        final payments = snapshot.data ?? [];
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  children: [
-                    Text(
-                      money.format(summary.remaining),
-                      style: Theme.of(context).textTheme.headlineLarge,
-                    ),
-                    const Text('remaining'),
-                    const SizedBox(height: 14),
-                    LinearProgressIndicator(
-                      value: summary.progress,
-                      minHeight: 8,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Principal ${money.format(summary.credit.principalAmount)} • '
-                      'Interest ${money.format(summary.interest)}',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Payment history',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            if (payments.isEmpty)
-              const Text('No payments recorded yet.')
-            else
-              ...payments.map(
-                (payment) => ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: AppColors.greenLight,
-                    foregroundColor: AppColors.green,
-                    child: Icon(Icons.check),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summary = ref
+        .watch(creditsProvider)
+        .valueOrNull
+        ?.where((item) => item.credit.id == creditId)
+        .firstOrNull;
+    if (summary == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Credit')),
+        body: const Center(child: Text('This credit was deleted.')),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(summary.credit.name),
+        actions: [
+          IconButton(
+            tooltip: 'Edit credit',
+            onPressed: () =>
+                _showCreditEditor(context, ref, credit: summary.credit),
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: 'Delete credit',
+            onPressed: () async {
+              final confirmed = await confirmDelete(
+                context,
+                'This removes the credit, reverses its cash-loan amount if any, and deletes linked payments.',
+              );
+              if (!confirmed) return;
+              await ref.read(databaseProvider).deleteCredit(creditId);
+              if (context.mounted) Navigator.pop(context);
+            },
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<CreditPayment>>(
+        stream: ref.watch(databaseProvider).watchCreditPayments(creditId),
+        builder: (context, snapshot) {
+          final payments = snapshot.data ?? [];
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: [
+                      Text(
+                        money.format(summary.remaining),
+                        style: Theme.of(context).textTheme.headlineLarge,
+                      ),
+                      const Text('remaining'),
+                      const SizedBox(height: 14),
+                      LinearProgressIndicator(
+                        value: summary.progress,
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Principal ${money.format(summary.credit.principalAmount)} • '
+                        'Interest ${money.format(summary.interest)}',
+                      ),
+                    ],
                   ),
-                  title: Text(money.format(payment.amount)),
-                  subtitle: Text(shortDate.format(payment.date)),
                 ),
               ),
-          ],
-        );
-      },
-    ),
-  );
+              const SizedBox(height: 18),
+              Text(
+                'Payment history',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              if (payments.isEmpty)
+                const Text(
+                  'No payments recorded yet. Tap a payment later to edit it.',
+                )
+              else
+                ...payments.map(
+                  (payment) => ListTile(
+                    onTap: () async {
+                      final txn = await ref
+                          .read(databaseProvider)
+                          .getTransaction(payment.transactionId);
+                      if (txn == null || !context.mounted) return;
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AddTransactionScreen(existing: txn),
+                        ),
+                      );
+                    },
+                    leading: const CircleAvatar(
+                      backgroundColor: AppColors.greenLight,
+                      foregroundColor: AppColors.green,
+                      child: Icon(Icons.check),
+                    ),
+                    title: Text(money.format(payment.amount)),
+                    subtitle: Text(
+                      '${shortDate.format(payment.date)}  •  tap to edit',
+                    ),
+                    trailing: const Icon(Icons.edit_outlined, size: 18),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
-Future<void> _showCreditEditor(BuildContext context, WidgetRef ref) async {
-  final name = TextEditingController();
-  final principal = TextEditingController();
-  final payment = TextEditingController();
-  final months = TextEditingController(text: '12');
-  final dueDay = TextEditingController(text: '15');
-  var type = 'item_purchase';
-  int? accountId;
+Future<void> _showCreditEditor(
+  BuildContext context,
+  WidgetRef ref, {
+  Credit? credit,
+}) async {
+  final name = TextEditingController(text: credit?.name);
+  final principal = TextEditingController(
+    text: credit?.principalAmount.toStringAsFixed(2),
+  );
+  final payment = TextEditingController(
+    text: credit?.monthlyPayment.toStringAsFixed(2),
+  );
+  final months = TextEditingController(text: '${credit?.totalMonths ?? 12}');
+  final dueDay = TextEditingController(text: '${credit?.dueDay ?? 15}');
+  var type = credit?.creditType ?? 'item_purchase';
+  int? accountId = credit?.accountId;
   final accounts = ref.read(accountsProvider).valueOrNull ?? [];
   await showModalBottomSheet<void>(
     context: context,
@@ -1461,7 +1653,10 @@ Future<void> _showCreditEditor(BuildContext context, WidgetRef ref) async {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Add credit', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              credit == null ? 'Add credit' : 'Edit credit',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 16),
             SegmentedButton<String>(
               segments: const [
@@ -1540,10 +1735,8 @@ Future<void> _showCreditEditor(BuildContext context, WidgetRef ref) async {
                     (type == 'cash_loan' && accountId == null)) {
                   return;
                 }
-                await ref
-                    .read(databaseProvider)
-                    .addCredit(
-                      CreditsCompanion.insert(
+                final companion = credit == null
+                    ? CreditsCompanion.insert(
                         name: name.text.trim(),
                         creditType: type,
                         principalAmount: principalValue,
@@ -1552,12 +1745,43 @@ Future<void> _showCreditEditor(BuildContext context, WidgetRef ref) async {
                         totalMonths: monthValue,
                         startDate: DateTime.now(),
                         dueDay: dayValue.clamp(1, 31),
-                      ),
-                    );
+                      )
+                    : CreditsCompanion(
+                        name: Value(name.text.trim()),
+                        creditType: Value(type),
+                        principalAmount: Value(principalValue),
+                        accountId: Value(accountId),
+                        monthlyPayment: Value(paymentValue),
+                        totalMonths: Value(monthValue),
+                        dueDay: Value(dayValue.clamp(1, 31)),
+                      );
+                if (credit == null) {
+                  await ref.read(databaseProvider).addCredit(companion);
+                } else {
+                  await ref
+                      .read(databaseProvider)
+                      .updateCredit(credit, companion);
+                }
                 if (sheetContext.mounted) Navigator.pop(sheetContext);
               },
-              child: const Text('Save credit'),
+              child: Text(credit == null ? 'Save credit' : 'Save changes'),
             ),
+            if (credit != null)
+              TextButton(
+                onPressed: () async {
+                  final confirmed = await confirmDelete(
+                    sheetContext,
+                    'This removes the credit and reverses related balances and payments.',
+                  );
+                  if (!confirmed) return;
+                  await ref.read(databaseProvider).deleteCredit(credit.id);
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+                child: const Text(
+                  'Delete credit',
+                  style: TextStyle(color: AppColors.red),
+                ),
+              ),
           ],
         ),
       ),
@@ -1600,7 +1824,7 @@ class LentMoneyScreen extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  _ReportMetric('Owed to you', unpaid, AppColors.accent),
+                  _ReportMetric('Owed to you', unpaid, context.sakto.accent),
                   const SizedBox(width: 10),
                   _ReportMetric('Overdue', overdue, AppColors.red),
                 ],
@@ -1624,57 +1848,70 @@ class LentMoneyScreen extends ConsumerWidget {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            child: Text(
-                              item.borrowerName
-                                  .split(' ')
-                                  .take(2)
-                                  .map((part) => part[0])
-                                  .join(),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _showLentEditor(context, ref, item: item),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              child: Text(
+                                item.borrowerName
+                                    .split(' ')
+                                    .take(2)
+                                    .map((part) => part[0])
+                                    .join(),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.borrowerName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Due ${shortDate.format(item.expectedReturnDate)}  •  tap to edit',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                  const SizedBox(height: 5),
+                                  _StatusBadge(status, statusColor),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  item.borrowerName,
+                                  money.format(item.amount),
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                Text(
-                                  'Due ${shortDate.format(item.expectedReturnDate)}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                const SizedBox(height: 5),
-                                _StatusBadge(status, statusColor),
+                                if (item.status == 'unpaid')
+                                  TextButton(
+                                    onPressed: () =>
+                                        _markPaid(context, ref, item),
+                                    child: const Text('Mark paid'),
+                                  )
+                                else
+                                  TextButton(
+                                    onPressed: () => ref
+                                        .read(databaseProvider)
+                                        .unmarkLentPaid(item.id),
+                                    child: const Text('Mark unpaid'),
+                                  ),
                               ],
                             ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                money.format(item.amount),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              if (item.status == 'unpaid')
-                                TextButton(
-                                  onPressed: () =>
-                                      _markPaid(context, ref, item),
-                                  child: const Text('Mark paid'),
-                                ),
-                            ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1741,12 +1978,20 @@ Future<void> _markPaid(
   }
 }
 
-Future<void> _showLentEditor(BuildContext context, WidgetRef ref) async {
-  final borrower = TextEditingController();
-  final amount = TextEditingController();
-  final note = TextEditingController();
-  var accountId = ref.read(accountsProvider).valueOrNull?.firstOrNull?.id;
-  var returnDate = DateTime.now().add(const Duration(days: 7));
+Future<void> _showLentEditor(
+  BuildContext context,
+  WidgetRef ref, {
+  LentMoneyData? item,
+}) async {
+  final borrower = TextEditingController(text: item?.borrowerName);
+  final amount = TextEditingController(text: item?.amount.toStringAsFixed(2));
+  final note = TextEditingController(text: item?.note);
+  var accountId =
+      item?.accountId ??
+      ref.read(accountsProvider).valueOrNull?.firstOrNull?.id;
+  var lentDate = item?.lentDate ?? DateTime.now();
+  var returnDate =
+      item?.expectedReturnDate ?? DateTime.now().add(const Duration(days: 7));
   final accounts = ref.read(accountsProvider).valueOrNull ?? [];
   await showModalBottomSheet<void>(
     context: context,
@@ -1784,12 +2029,27 @@ Future<void> _showLentEditor(BuildContext context, WidgetRef ref) async {
               onChanged: (value) => accountId = value,
             ),
             ListTile(
+              title: const Text('Date lent'),
+              trailing: Text(shortDate.format(lentDate)),
+              onTap: () async {
+                final value = await showDatePicker(
+                  context: context,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                  initialDate: lentDate,
+                );
+                if (value != null) {
+                  setSheetState(() => lentDate = value);
+                }
+              },
+            ),
+            ListTile(
               title: const Text('Expected return'),
               trailing: Text(shortDate.format(returnDate)),
               onTap: () async {
                 final value = await showDatePicker(
                   context: context,
-                  firstDate: DateTime.now(),
+                  firstDate: DateTime(2000),
                   lastDate: DateTime(2100),
                   initialDate: returnDate,
                 );
@@ -1811,22 +2071,54 @@ Future<void> _showLentEditor(BuildContext context, WidgetRef ref) async {
                     accountId == null) {
                   return;
                 }
-                await ref
-                    .read(databaseProvider)
-                    .addLentMoney(
-                      LentMoneyCompanion.insert(
-                        borrowerName: borrower.text.trim(),
-                        amount: value,
-                        accountId: accountId!,
-                        lentDate: DateTime.now(),
-                        expectedReturnDate: returnDate,
-                        note: Value(note.text.trim()),
-                      ),
-                    );
+                final database = ref.read(databaseProvider);
+                if (item == null) {
+                  await database.addLentMoney(
+                    LentMoneyCompanion.insert(
+                      borrowerName: borrower.text.trim(),
+                      amount: value,
+                      accountId: accountId!,
+                      lentDate: lentDate,
+                      expectedReturnDate: returnDate,
+                      note: Value(note.text.trim()),
+                    ),
+                  );
+                } else {
+                  await database.updateLentMoney(
+                    item,
+                    LentMoneyCompanion(
+                      borrowerName: Value(borrower.text.trim()),
+                      amount: Value(value),
+                      accountId: Value(accountId!),
+                      lentDate: Value(lentDate),
+                      expectedReturnDate: Value(returnDate),
+                      note: Value(note.text.trim()),
+                    ),
+                  );
+                }
                 if (sheetContext.mounted) Navigator.pop(sheetContext);
               },
-              child: const Text('Save lent money'),
+              child: Text(item == null ? 'Save lent money' : 'Save changes'),
             ),
+            if (item != null)
+              TextButton(
+                onPressed: () async {
+                  final confirmed = await confirmDelete(
+                    sheetContext,
+                    'This reverses the amount on the related account(s).',
+                  );
+                  if (!confirmed) return;
+                  await ref.read(databaseProvider).deleteLentMoney(item.id);
+                  await NotificationService.instance.cancelLentReminder(
+                    item.id,
+                  );
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+                child: const Text(
+                  'Delete lent money',
+                  style: TextStyle(color: AppColors.red),
+                ),
+              ),
           ],
         ),
       ),
@@ -1887,6 +2179,8 @@ class IncomeSourcesScreen extends ConsumerWidget {
                   return Card(
                     child: ListTile(
                       contentPadding: const EdgeInsets.all(14),
+                      onTap: () =>
+                          _showIncomeEditor(context, ref, source: source),
                       leading: const CircleAvatar(
                         backgroundColor: AppColors.greenLight,
                         foregroundColor: AppColors.green,
@@ -1896,7 +2190,7 @@ class IncomeSourcesScreen extends ConsumerWidget {
                         source.name,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      subtitle: Text(source.frequency),
+                      subtitle: Text('${source.frequency}  •  tap to edit'),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -1906,9 +2200,16 @@ class IncomeSourcesScreen extends ConsumerWidget {
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                           GestureDetector(
-                            onTap: () => ref
-                                .read(databaseProvider)
-                                .deleteIncomeSource(source.id),
+                            onTap: () async {
+                              final confirmed = await confirmDelete(
+                                context,
+                                'This removes the recurring income from forecasts.',
+                              );
+                              if (!confirmed) return;
+                              await ref
+                                  .read(databaseProvider)
+                                  .deleteIncomeSource(source.id);
+                            },
                             child: const Text(
                               'Remove',
                               style: TextStyle(
@@ -1928,13 +2229,19 @@ class IncomeSourcesScreen extends ConsumerWidget {
   }
 }
 
-Future<void> _showIncomeEditor(BuildContext context, WidgetRef ref) async {
-  final name = TextEditingController();
-  final amount = TextEditingController();
-  var frequency = 'monthly';
-  var payDay = 15;
-  var weekday = DateTime.friday % 7;
-  var accountId = ref.read(accountsProvider).valueOrNull?.firstOrNull?.id;
+Future<void> _showIncomeEditor(
+  BuildContext context,
+  WidgetRef ref, {
+  IncomeSource? source,
+}) async {
+  final name = TextEditingController(text: source?.name);
+  final amount = TextEditingController(text: source?.amount.toStringAsFixed(2));
+  var frequency = source?.frequency ?? 'monthly';
+  var payDay = source?.payDayOfMonth ?? 15;
+  var weekday = source?.payWeekday ?? DateTime.friday % 7;
+  var accountId =
+      source?.accountId ??
+      ref.read(accountsProvider).valueOrNull?.firstOrNull?.id;
   final accounts = ref.read(accountsProvider).valueOrNull ?? [];
   await showModalBottomSheet<void>(
     context: context,
@@ -2020,27 +2327,63 @@ Future<void> _showIncomeEditor(BuildContext context, WidgetRef ref) async {
                     accountId == null) {
                   return;
                 }
-                await ref
-                    .read(databaseProvider)
-                    .addIncomeSource(
-                      IncomeSourcesCompanion.insert(
-                        name: name.text.trim(),
-                        amount: value,
-                        frequency: frequency,
-                        payWeekday: Value(
-                          frequency == 'monthly' ? null : weekday,
-                        ),
-                        payDayOfMonth: Value(
-                          frequency == 'monthly' ? payDay : null,
-                        ),
-                        accountId: accountId!,
-                        startDate: DateTime.now(),
+                final database = ref.read(databaseProvider);
+                if (source == null) {
+                  await database.addIncomeSource(
+                    IncomeSourcesCompanion.insert(
+                      name: name.text.trim(),
+                      amount: value,
+                      frequency: frequency,
+                      payWeekday: Value(
+                        frequency == 'monthly' ? null : weekday,
                       ),
-                    );
+                      payDayOfMonth: Value(
+                        frequency == 'monthly' ? payDay : null,
+                      ),
+                      accountId: accountId!,
+                      startDate: DateTime.now(),
+                    ),
+                  );
+                } else {
+                  await database.updateIncomeSource(
+                    source.copyWith(
+                      name: name.text.trim(),
+                      amount: value,
+                      frequency: frequency,
+                      payWeekday: Value(
+                        frequency == 'monthly' ? null : weekday,
+                      ),
+                      payDayOfMonth: Value(
+                        frequency == 'monthly' ? payDay : null,
+                      ),
+                      accountId: accountId!,
+                    ),
+                  );
+                }
                 if (sheetContext.mounted) Navigator.pop(sheetContext);
               },
-              child: const Text('Save income source'),
+              child: Text(
+                source == null ? 'Save income source' : 'Save changes',
+              ),
             ),
+            if (source != null)
+              TextButton(
+                onPressed: () async {
+                  final confirmed = await confirmDelete(
+                    sheetContext,
+                    'This removes the recurring income from forecasts.',
+                  );
+                  if (!confirmed) return;
+                  await ref
+                      .read(databaseProvider)
+                      .deleteIncomeSource(source.id);
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+                child: const Text(
+                  'Delete income source',
+                  style: TextStyle(color: AppColors.red),
+                ),
+              ),
           ],
         ),
       ),
@@ -2052,78 +2395,252 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('Settings')),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Column(
-            children: [
-              const ListTile(
-                leading: Icon(Icons.currency_exchange),
-                title: Text('Currency'),
-                subtitle: Text('Philippine peso (₱ PHP)'),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.notifications_outlined),
-                title: const Text('Lent money reminders'),
-                subtitle: const Text('Daily reminders when due or overdue'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final result = await NotificationService.instance
-                      .requestPermission();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          result == false
-                              ? 'Notification permission was not granted.'
-                              : 'Notifications are enabled.',
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appearance = ref.watch(appearanceProvider);
+    final colors = appearance.colors;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Look and feel', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 10),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Color theme'),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: themePresets.map((preset) {
+                      final selected =
+                          appearance.presetId == preset.id &&
+                          appearance.backgroundHex == null &&
+                          appearance.accentHex == null;
+                      return ChoiceChip(
+                        selected: selected,
+                        label: Text(preset.name),
+                        avatar: CircleAvatar(
+                          backgroundColor: preset.colors.accent,
                         ),
-                      ),
-                    );
-                  }
-                },
+                        onSelected: (_) => ref
+                            .read(appearanceProvider.notifier)
+                            .setPreset(preset.id),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  _ColorRow(
+                    label: 'Background',
+                    color: colors.background,
+                    onPick: (color) => ref
+                        .read(appearanceProvider.notifier)
+                        .setColor(backgroundHex: colorHex(color)),
+                  ),
+                  _ColorRow(
+                    label: 'Cards',
+                    color: colors.surface,
+                    onPick: (color) => ref
+                        .read(appearanceProvider.notifier)
+                        .setColor(surfaceHex: colorHex(color)),
+                  ),
+                  _ColorRow(
+                    label: 'Accent',
+                    color: colors.accent,
+                    onPick: (color) => ref
+                        .read(appearanceProvider.notifier)
+                        .setColor(accentHex: colorHex(color)),
+                  ),
+                  _ColorRow(
+                    label: 'Text',
+                    color: colors.text,
+                    onPick: (color) => ref
+                        .read(appearanceProvider.notifier)
+                        .setColor(textHex: colorHex(color)),
+                  ),
+                ],
               ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.file_download_outlined),
-                title: const Text('Export backup'),
-                subtitle: const Text('Save all data as a JSON file'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final path = await BackupService.exportJson(
-                    ref.read(databaseProvider),
-                  );
-                  if (context.mounted) {
-                    showDialog<void>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Backup created'),
-                        content: SelectableText(path),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Done'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('Background picture'),
+                  subtitle: Text(
+                    appearance.hasImage
+                        ? 'Custom photo is in use'
+                        : 'Choose any photo from your gallery',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => ref
+                      .read(appearanceProvider.notifier)
+                      .pickBackgroundImage(),
+                ),
+                if (appearance.hasImage) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Photo dim',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        Slider(
+                          value: appearance.imageDim,
+                          min: 0,
+                          max: 0.8,
+                          onChanged: (value) => ref
+                              .read(appearanceProvider.notifier)
+                              .setImageDim(value),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.hide_image_outlined),
+                    title: const Text('Remove background picture'),
+                    onTap: () => ref
+                        .read(appearanceProvider.notifier)
+                        .clearBackgroundImage(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Card(
+            child: Column(
+              children: [
+                const ListTile(
+                  leading: Icon(Icons.currency_exchange),
+                  title: Text('Currency'),
+                  subtitle: Text('Philippine peso (₱ PHP)'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.notifications_outlined),
+                  title: const Text('Lent money reminders'),
+                  subtitle: const Text('Daily reminders when due or overdue'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final result = await NotificationService.instance
+                        .requestPermission();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            result == false
+                                ? 'Notification permission was not granted.'
+                                : 'Notifications are enabled.',
                           ),
-                        ],
-                      ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.file_download_outlined),
+                  title: const Text('Export backup'),
+                  subtitle: const Text('Save all data as a JSON file'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final path = await BackupService.exportJson(
+                      ref.read(databaseProvider),
                     );
-                  }
-                },
+                    if (context.mounted) {
+                      showDialog<void>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Backup created'),
+                          content: SelectableText(path),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Done'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'All Sakto data stays in the local database on this device. '
+            'Keep exports somewhere safe before uninstalling the app.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorRow extends StatelessWidget {
+  const _ColorRow({
+    required this.label,
+    required this.color,
+    required this.onPick,
+  });
+
+  final String label;
+  final Color color;
+  final ValueChanged<Color> onPick;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(label),
+    trailing: GestureDetector(
+      onTap: () async {
+        var next = color;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Choose $label color'),
+            content: SingleChildScrollView(
+              child: ColorPicker(
+                pickerColor: color,
+                onColorChanged: (value) => next = value,
+                enableAlpha: false,
+                labelTypes: const [],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Apply'),
               ),
             ],
           ),
+        );
+        if (confirmed == true) onPick(next);
+      },
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: context.sakto.border),
         ),
-        const SizedBox(height: 16),
-        Text(
-          'All Sakto data stays in the local database on this device. '
-          'Keep exports somewhere safe before uninstalling the app.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
+      ),
     ),
   );
 }

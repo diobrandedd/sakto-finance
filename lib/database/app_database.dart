@@ -206,6 +206,39 @@ class AppDatabase extends _$AppDatabase {
     await (delete(accounts)..where((a) => a.id.equals(id))).go();
   });
 
+  double _transactionDelta(String type, double amount) =>
+      type == 'expense' ? -amount : amount;
+
+  Future<void> _adjustBalance(int accountId, double delta) async {
+    final account = await (select(
+      accounts,
+    )..where((a) => a.id.equals(accountId))).getSingle();
+    await (update(accounts)..where((a) => a.id.equals(accountId))).write(
+      AccountsCompanion(balance: Value(account.balance + delta)),
+    );
+  }
+
+  Future<void> _refreshCreditStatus(int creditId) async {
+    final credit = await (select(
+      credits,
+    )..where((c) => c.id.equals(creditId))).getSingleOrNull();
+    if (credit == null) return;
+    final totalPaid =
+        await (selectOnly(creditPayments)
+              ..addColumns([creditPayments.amount.sum()])
+              ..where(creditPayments.creditId.equals(creditId)))
+            .map((row) => row.read(creditPayments.amount.sum()) ?? 0)
+            .getSingle();
+    final completed = totalPaid >= credit.monthlyPayment * credit.totalMonths;
+    await (update(credits)..where((c) => c.id.equals(creditId))).write(
+      CreditsCompanion(status: Value(completed ? 'completed' : 'active')),
+    );
+  }
+
+  Future<MoneyTransaction?> getTransaction(int id) => (select(
+    moneyTransactions,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Future<int> addTransaction({
     required int accountId,
     required int? categoryId,
@@ -216,13 +249,7 @@ class AppDatabase extends _$AppDatabase {
     String source = 'manual',
     int? linkedId,
   }) => transaction(() async {
-    final account = await (select(
-      accounts,
-    )..where((a) => a.id.equals(accountId))).getSingle();
-    final delta = type == 'expense' ? -amount : amount;
-    await (update(accounts)..where((a) => a.id.equals(account.id))).write(
-      AccountsCompanion(balance: Value(account.balance + delta)),
-    );
+    await _adjustBalance(accountId, _transactionDelta(type, amount));
     return into(moneyTransactions).insert(
       MoneyTransactionsCompanion.insert(
         accountId: accountId,
@@ -235,6 +262,94 @@ class AppDatabase extends _$AppDatabase {
         linkedId: Value(linkedId),
       ),
     );
+  });
+
+  Future<void> updateTransaction({
+    required MoneyTransaction original,
+    required int accountId,
+    required int? categoryId,
+    required String type,
+    required double amount,
+    required DateTime date,
+    String note = '',
+    String source = 'manual',
+    int? linkedId,
+  }) => transaction(() async {
+    await _adjustBalance(
+      original.accountId,
+      -_transactionDelta(original.type, original.amount),
+    );
+    await _adjustBalance(accountId, _transactionDelta(type, amount));
+    await (update(
+      moneyTransactions,
+    )..where((t) => t.id.equals(original.id))).write(
+      MoneyTransactionsCompanion(
+        accountId: Value(accountId),
+        categoryId: Value(categoryId),
+        type: Value(type),
+        amount: Value(amount),
+        note: Value(note),
+        date: Value(date),
+        source: Value(source),
+        linkedId: Value(linkedId),
+      ),
+    );
+    final existingPayment = await (select(
+      creditPayments,
+    )..where((p) => p.transactionId.equals(original.id))).getSingleOrNull();
+    if (source == 'credit_payment' && linkedId != null) {
+      if (existingPayment == null) {
+        await into(creditPayments).insert(
+          CreditPaymentsCompanion.insert(
+            creditId: linkedId,
+            transactionId: original.id,
+            amount: amount,
+            date: date,
+          ),
+        );
+      } else {
+        await (update(
+          creditPayments,
+        )..where((p) => p.id.equals(existingPayment.id))).write(
+          CreditPaymentsCompanion(
+            creditId: Value(linkedId),
+            amount: Value(amount),
+            date: Value(date),
+          ),
+        );
+        if (existingPayment.creditId != linkedId) {
+          await _refreshCreditStatus(existingPayment.creditId);
+        }
+      }
+      await _refreshCreditStatus(linkedId);
+    } else if (existingPayment != null) {
+      await (delete(
+        creditPayments,
+      )..where((p) => p.id.equals(existingPayment.id))).go();
+      await _refreshCreditStatus(existingPayment.creditId);
+    }
+  });
+
+  Future<void> deleteTransaction(int id) => transaction(() async {
+    final original = await (select(
+      moneyTransactions,
+    )..where((t) => t.id.equals(id))).getSingle();
+    final existingPayment = await (select(
+      creditPayments,
+    )..where((p) => p.transactionId.equals(id))).getSingleOrNull();
+    if (existingPayment != null) {
+      await (delete(
+        creditPayments,
+      )..where((p) => p.id.equals(existingPayment.id))).go();
+    }
+    await _adjustBalance(
+      original.accountId,
+      -_transactionDelta(original.type, original.amount),
+    );
+    await (delete(moneyTransactions)..where((t) => t.id.equals(id))).go();
+    if (existingPayment != null) {
+      await _refreshCreditStatus(existingPayment.creditId);
+    }
   });
 
   Future<int> addCredit(CreditsCompanion credit) => transaction(() async {
@@ -304,20 +419,7 @@ class AppDatabase extends _$AppDatabase {
         date: date,
       ),
     );
-    final credit = await (select(
-      credits,
-    )..where((c) => c.id.equals(creditId))).getSingle();
-    final totalPaid =
-        await (selectOnly(creditPayments)
-              ..addColumns([creditPayments.amount.sum()])
-              ..where(creditPayments.creditId.equals(creditId)))
-            .map((r) => r.read(creditPayments.amount.sum()) ?? 0)
-            .getSingle();
-    if (totalPaid >= credit.monthlyPayment * credit.totalMonths) {
-      await (update(credits)..where((c) => c.id.equals(creditId))).write(
-        const CreditsCompanion(status: Value('completed')),
-      );
-    }
+    await _refreshCreditStatus(creditId);
   });
 
   Stream<List<LentMoneyData>> watchLentMoney() => (select(
@@ -355,21 +457,112 @@ class AppDatabase extends _$AppDatabase {
         );
       });
 
+  Future<void> updateLentMoney(
+    LentMoneyData original,
+    LentMoneyCompanion next,
+  ) => transaction(() async {
+    await _reverseLentEffect(original);
+    final updated = original.copyWithCompanion(next);
+    await (update(
+      lentMoney,
+    )..where((l) => l.id.equals(original.id))).replace(updated);
+    await _applyLentEffect(updated);
+  });
+
+  Future<void> deleteLentMoney(int id) => transaction(() async {
+    final item = await (select(
+      lentMoney,
+    )..where((l) => l.id.equals(id))).getSingle();
+    await _reverseLentEffect(item);
+    await (delete(lentMoney)..where((l) => l.id.equals(id))).go();
+  });
+
+  Future<void> unmarkLentPaid(int id) => transaction(() async {
+    final item = await (select(
+      lentMoney,
+    )..where((l) => l.id.equals(id))).getSingle();
+    if (item.status != 'paid') return;
+    if (item.paidToAccountId != null) {
+      await _adjustBalance(item.paidToAccountId!, -item.amount);
+    }
+    await (update(lentMoney)..where((l) => l.id.equals(id))).write(
+      const LentMoneyCompanion(
+        status: Value('unpaid'),
+        paidDate: Value(null),
+        paidToAccountId: Value(null),
+      ),
+    );
+  });
+
+  Future<void> _reverseLentEffect(LentMoneyData item) async {
+    await _adjustBalance(item.accountId, item.amount);
+    if (item.status == 'paid' && item.paidToAccountId != null) {
+      await _adjustBalance(item.paidToAccountId!, -item.amount);
+    }
+  }
+
+  Future<void> _applyLentEffect(LentMoneyData item) async {
+    await _adjustBalance(item.accountId, -item.amount);
+    if (item.status == 'paid' && item.paidToAccountId != null) {
+      await _adjustBalance(item.paidToAccountId!, item.amount);
+    }
+  }
+
   Stream<List<IncomeSource>> watchIncomeSources() =>
       select(incomeSources).watch();
 
   Future<int> addIncomeSource(IncomeSourcesCompanion source) =>
       into(incomeSources).insert(source);
 
+  Future<void> updateIncomeSource(IncomeSource source) =>
+      update(incomeSources).replace(source);
+
   Future<void> deleteIncomeSource(int id) =>
       (delete(incomeSources)..where((s) => s.id.equals(id))).go();
 
+  Future<void> updateCredit(Credit original, CreditsCompanion changes) =>
+      transaction(() async {
+        if (original.creditType == 'cash_loan' && original.accountId != null) {
+          await _adjustBalance(original.accountId!, -original.principalAmount);
+        }
+        await (update(
+          credits,
+        )..where((c) => c.id.equals(original.id))).write(changes);
+        final updated = await (select(
+          credits,
+        )..where((c) => c.id.equals(original.id))).getSingle();
+        if (updated.creditType == 'cash_loan' && updated.accountId != null) {
+          await _adjustBalance(updated.accountId!, updated.principalAmount);
+        }
+        await _refreshCreditStatus(original.id);
+      });
+
   Future<void> deleteCredit(int id) => transaction(() async {
+    final credit = await (select(
+      credits,
+    )..where((c) => c.id.equals(id))).getSingle();
     final payments = await (select(
       creditPayments,
     )..where((p) => p.creditId.equals(id))).get();
-    if (payments.isNotEmpty) {
-      throw StateError('Credits with payments cannot be deleted.');
+    for (final payment in payments) {
+      final txn = await (select(
+        moneyTransactions,
+      )..where((t) => t.id.equals(payment.transactionId))).getSingleOrNull();
+      await (delete(
+        creditPayments,
+      )..where((p) => p.id.equals(payment.id))).go();
+      if (txn != null) {
+        await _adjustBalance(
+          txn.accountId,
+          -_transactionDelta(txn.type, txn.amount),
+        );
+        await (delete(
+          moneyTransactions,
+        )..where((t) => t.id.equals(txn.id))).go();
+      }
+    }
+    if (credit.creditType == 'cash_loan' && credit.accountId != null) {
+      await _adjustBalance(credit.accountId!, -credit.principalAmount);
     }
     await (delete(credits)..where((c) => c.id.equals(id))).go();
   });
