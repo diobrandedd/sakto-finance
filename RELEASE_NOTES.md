@@ -1,20 +1,17 @@
-# Sakto v1.5.0
+# Sakto v1.6.0
 
-Appearance controls and full record editing for the offline personal finance tracker.
+First-run guidance and smoother browser support for the offline personal finance tracker.
 
 ## Highlights
 
-- Color themes: Sakto, Night, Ocean, Forest, Sunset, and Lavender
-- Custom colors for background, cards, accent, and text
-- Optional gallery photo as the app background, with a dim slider
-- Tap any expense or income row to edit or delete it
-- Edit and delete credits, credit payments, lent money, and income sources
-- Account balances reverse and reapply so totals stay correct after a correction
-- Mark lent money unpaid if it was marked paid by mistake
+- Guided spotlight tour on first launch covering the main tabs and core actions
+- Replay the tour anytime from Home (`?`) or Settings → Replay app tour
+- Chrome/web can open the local Drift database with bundled SQLite WASM assets
+- Platform file helpers so gallery background and backup flows stay Android-safe on web
 
 ## Install
 
-Download `sakto-v1.5.0.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
+Download `sakto-v1.6.0.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
 
 If Sakto is already installed, tap **Update**. Do not uninstall first if you want to keep existing records.
 

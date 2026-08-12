@@ -55,6 +55,7 @@ Sakto is a private, offline-first money tracker built for Android with Flutter. 
 - **Date-range reports** — spent, added, net total, and transaction history
 - **Editable records** — tap a transaction, credit, lent-money row, or income source to correct a mistype
 - **Custom look** — color themes, custom UI colors, and a gallery background photo
+- **App tour** — first-launch spotlight guide, replayable from Home or Settings
 - **Local reminders** — due and overdue repayment notifications
 - **Portable backup** — export all local records to a JSON file
 - **Private by design** — no authentication, analytics, backend, or cloud database
@@ -65,14 +66,14 @@ Sakto is a private, offline-first money tracker built for Android with Flutter. 
 
 Download the latest Android APK from the [GitHub Releases page](https://github.com/diobrandedd/sakto-finance/releases/latest).
 
-Current release: **[Sakto v1.5.0](https://github.com/diobrandedd/sakto-finance/releases/tag/v1.5.0)**
+Current release: **[Sakto v1.6.0](https://github.com/diobrandedd/sakto-finance/releases/tag/v1.6.0)**
 
-1. On your Android phone, download [`sakto-v1.5.0.apk`](https://github.com/diobrandedd/sakto-finance/releases/download/v1.5.0/sakto-v1.5.0.apk).
+1. On your Android phone, download [`sakto-v1.6.0.apk`](https://github.com/diobrandedd/sakto-finance/releases/download/v1.6.0/sakto-v1.6.0.apk).
 2. Open the downloaded file.
 3. Allow **Install unknown apps** for your browser or file manager when Android asks.
 4. Tap **Install** or **Update**.
 
-If you already have Sakto installed, install v1.5.0 over it. Do not uninstall first — that would delete local data. Creating a backup before any update is still recommended.
+If you already have Sakto installed, install v1.6.0 over it. Do not uninstall first — that would delete local data. Creating a backup before any update is still recommended.
 
 ---
 
