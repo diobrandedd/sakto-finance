@@ -1,11 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../platform/file_support.dart';
 import '../theme/app_theme.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
@@ -122,7 +120,7 @@ class Appearance {
     orElse: () => themePresets.first,
   );
 
-  bool get hasImage => imagePath != null && File(imagePath!).existsSync();
+  bool get hasImage => localFileExists(imagePath);
 
   SaktoColors get colors {
     final base = preset.colors;
@@ -230,23 +228,13 @@ class AppearanceController extends StateNotifier<Appearance> {
       imageQuality: 88,
     );
     if (picked == null) return;
-    final directory = await getApplicationDocumentsDirectory();
-    final destination = File(
-      '${directory.path}${Platform.pathSeparator}sakto_background.jpg',
-    );
-    await File(picked.path).copy(destination.path);
-    state = state.copyWith(imagePath: destination.path);
+    final path = await copyPickedImageToDocuments(picked.path);
+    state = state.copyWith(imagePath: path);
     await _save();
   }
 
   Future<void> clearBackgroundImage() async {
-    final path = state.imagePath;
-    if (path != null) {
-      final file = File(path);
-      if (file.existsSync()) {
-        await file.delete();
-      }
-    }
+    await deleteLocalFile(state.imagePath);
     state = state.copyWith(clearImage: true);
     await _save();
   }

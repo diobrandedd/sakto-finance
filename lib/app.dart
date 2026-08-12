@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 
 import 'package:drift/drift.dart' show Value;
@@ -10,8 +9,10 @@ import 'package:intl/intl.dart';
 
 import 'appearance/appearance.dart';
 import 'database/app_database.dart';
+import 'platform/file_support.dart';
 import 'services/app_services.dart';
 import 'theme/app_theme.dart';
+import 'tour/app_tour.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final database = AppDatabase();
@@ -59,11 +60,15 @@ class SaktoApp extends ConsumerWidget {
       ),
       builder: (context, child) {
         final page = child ?? const SizedBox.shrink();
-        if (!appearance.hasImage) return page;
+        if (!appearance.hasImage || appearance.imagePath == null) {
+          return page;
+        }
+        final image = localFileImage(appearance.imagePath!);
+        if (image == null) return page;
         return Container(
           decoration: BoxDecoration(
             image: DecorationImage(
-              image: FileImage(File(appearance.imagePath!)),
+              image: image,
               fit: BoxFit.cover,
               colorFilter: ColorFilter.mode(
                 Colors.black.withValues(alpha: appearance.imageDim),
@@ -88,82 +93,163 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
+  bool _tourVisible = false;
+  final _tourKeys = TourKeys();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!ref.read(tourCompletedProvider)) {
+        _startTour();
+      }
+    });
+  }
+
+  void _startTour() {
+    setState(() {
+      _index = 0;
+      _tourVisible = true;
+    });
+  }
+
+  Future<void> _finishTour() async {
+    setState(() => _tourVisible = false);
+    await ref.read(tourCompletedProvider.notifier).markCompleted();
+  }
+
+  void _onTourStepChanged(int stepIndex) {
+    final target = saktoTourSteps[stepIndex].target;
+    final nextIndex = switch (target) {
+      TourTarget.accounts => 1,
+      TourTarget.reports => 3,
+      TourTarget.more => 4,
+      _ => 0,
+    };
+    if (_index != nextIndex) {
+      setState(() => _index = nextIndex);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(tourRequestProvider, (previous, next) {
+      if (previous != next) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        _startTour();
+      }
+    });
     final pages = [
-      const HomeScreen(),
+      HomeScreen(
+        helpKey: _tourKeys.help,
+        settingsKey: _tourKeys.settings,
+        homeKey: _tourKeys.home,
+        onReplayTour: _startTour,
+      ),
       const AccountsScreen(),
       const SizedBox.shrink(),
       const ReportsScreen(),
       const MoreScreen(),
     ];
-    return Scaffold(
-      body: SafeArea(
-        child: IndexedStack(index: _index, children: pages),
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: context.sakto.accent,
-        foregroundColor: Colors.white,
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const AddTransactionScreen())),
-        child: const Icon(Icons.add_rounded, size: 30),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: NavigationBar(
-        height: 70,
-        selectedIndex: _index,
-        backgroundColor: context.sakto.surface,
-        indicatorColor: context.sakto.accentLight,
-        onDestinationSelected: (value) {
-          if (value == 2) {
-            Navigator.of(context).push(
+    return Stack(
+      children: [
+        Scaffold(
+          body: SafeArea(
+            child: IndexedStack(index: _index, children: pages),
+          ),
+          floatingActionButton: FloatingActionButton(
+            key: _tourKeys.add,
+            backgroundColor: context.sakto.accent,
+            foregroundColor: Colors.white,
+            onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AddTransactionScreen()),
-            );
-          } else {
-            setState(() => _index = value);
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.pie_chart_outline_rounded),
-            selectedIcon: Icon(Icons.pie_chart_rounded),
-            label: 'Home',
+            ),
+            child: const Icon(Icons.add_rounded, size: 30),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet_rounded),
-            label: 'Accounts',
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.centerDocked,
+          bottomNavigationBar: NavigationBar(
+            height: 70,
+            selectedIndex: _index,
+            backgroundColor: context.sakto.surface,
+            indicatorColor: context.sakto.accentLight,
+            onDestinationSelected: (value) {
+              if (value == 2) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AddTransactionScreen(),
+                  ),
+                );
+              } else {
+                setState(() => _index = value);
+              }
+            },
+            destinations: [
+              const NavigationDestination(
+                icon: Icon(Icons.pie_chart_outline_rounded),
+                selectedIcon: Icon(Icons.pie_chart_rounded),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: KeyedSubtree(
+                  key: _tourKeys.accounts,
+                  child: const Icon(Icons.account_balance_wallet_outlined),
+                ),
+                selectedIcon: const Icon(Icons.account_balance_wallet_rounded),
+                label: 'Accounts',
+              ),
+              const NavigationDestination(icon: SizedBox(width: 32), label: ''),
+              NavigationDestination(
+                icon: KeyedSubtree(
+                  key: _tourKeys.reports,
+                  child: const Icon(Icons.calendar_month_outlined),
+                ),
+                selectedIcon: const Icon(Icons.calendar_month_rounded),
+                label: 'Reports',
+              ),
+              NavigationDestination(
+                icon: KeyedSubtree(
+                  key: _tourKeys.more,
+                  child: const Icon(Icons.grid_view_outlined),
+                ),
+                selectedIcon: const Icon(Icons.grid_view_rounded),
+                label: 'More',
+              ),
+            ],
           ),
-          NavigationDestination(icon: SizedBox(width: 32), label: ''),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month_rounded),
-            label: 'Reports',
+        ),
+        if (_tourVisible)
+          Positioned.fill(
+            child: AppTourOverlay(
+              keys: _tourKeys,
+              onFinished: _finishTour,
+              onStepChanged: _onTourStepChanged,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.grid_view_outlined),
-            selectedIcon: Icon(Icons.grid_view_rounded),
-            label: 'More',
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
 
 class ScreenHeader extends StatelessWidget {
-  const ScreenHeader(this.title, {this.subtitle, this.action, super.key});
+  const ScreenHeader(
+    this.title, {
+    this.subtitle,
+    this.leading,
+    this.action,
+    super.key,
+  });
   final String title;
   final String? subtitle;
+  final Widget? leading;
   final Widget? action;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+    padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
     child: Row(
       children: [
+        ?leading,
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +319,18 @@ Future<bool> confirmDelete(BuildContext context, String message) async =>
     false;
 
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    required this.helpKey,
+    required this.settingsKey,
+    required this.homeKey,
+    required this.onReplayTour,
+    super.key,
+  });
+
+  final GlobalKey helpKey;
+  final GlobalKey settingsKey;
+  final GlobalKey homeKey;
+  final VoidCallback onReplayTour;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -253,7 +350,14 @@ class HomeScreen extends ConsumerWidget {
           child: ScreenHeader(
             'Sakto',
             subtitle: 'Your money, exactly where it stands',
+            leading: IconButton(
+              key: helpKey,
+              tooltip: 'Replay app tour',
+              onPressed: onReplayTour,
+              icon: const Icon(Icons.help_outline_rounded),
+            ),
             action: IconButton(
+              key: settingsKey,
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
@@ -270,10 +374,13 @@ class HomeScreen extends ConsumerWidget {
           data: (items) {
             if (items.isEmpty) {
               return SliverFillRemaining(
-                child: EmptyState(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'Start with an account',
-                  message: 'Add your cash, e-wallet, or bank account first.',
+                child: KeyedSubtree(
+                  key: homeKey,
+                  child: const EmptyState(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: 'Start with an account',
+                    message: 'Add your cash, e-wallet, or bank account first.',
+                  ),
                 ),
               );
             }
@@ -286,8 +393,15 @@ class HomeScreen extends ConsumerWidget {
             );
             return SliverList.list(
               children: [
-                _BalanceDonut(accounts: items, total: total),
-                _ForecastCard(data: forecast),
+                KeyedSubtree(
+                  key: homeKey,
+                  child: Column(
+                    children: [
+                      _BalanceDonut(accounts: items, total: total),
+                      _ForecastCard(data: forecast),
+                    ],
+                  ),
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
                   child: Text(
@@ -2519,6 +2633,16 @@ class SettingsScreen extends ConsumerWidget {
           Card(
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.help_outline_rounded),
+                  title: const Text('Replay app tour'),
+                  subtitle: const Text('Walk through where to tap again'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    ref.read(tourRequestProvider.notifier).state++;
+                  },
+                ),
+                const Divider(height: 1),
                 const ListTile(
                   leading: Icon(Icons.currency_exchange),
                   title: Text('Currency'),

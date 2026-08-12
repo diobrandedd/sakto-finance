@@ -1,10 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../database/app_database.dart';
+import '../platform/file_support.dart';
 
 class NotificationService {
   NotificationService._();
@@ -79,16 +78,11 @@ class NotificationService {
 
 class BackupService {
   static Future<String> exportJson(AppDatabase database) async {
-    final directory = await getApplicationDocumentsDirectory();
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final file = File(
-      '${directory.path}${Platform.pathSeparator}sakto-$stamp.json',
-    );
     final data = await database.exportSnapshot();
-    await file.writeAsString(
+    return writeTextDocument(
+      'sakto-$stamp.json',
       const JsonEncoder.withIndent('  ').convert(data),
-      flush: true,
     );
-    return file.path;
   }
 }
