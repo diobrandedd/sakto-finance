@@ -1,15 +1,17 @@
-# Sakto v1.6.1
+# Sakto v1.6.2
 
-Patch release that restores the tour Continue / Next / Done button.
+Richer app guides with working spotlights and a chooser for focused walkthroughs.
 
 ## Highlights
 
-- Tour card now shows a visible **Start** / **Next** / **Done** button so you can move through the guide
-- Filled buttons no longer collapse when placed in a row (theme min-size fix)
+- Spotlight cutouts now work on Accounts, Reports, and More tabs
+- Full tour covers Credits, Lent money, Income sources, and Settings under More
+- Lent money step explains that lending deducts from the account you choose
+- Tap ? (or Settings → App guides) to pick: Replay everything, Lent money, or Income sources
 
 ## Install
 
-Download `sakto-v1.6.1.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
+Download `sakto-v1.6.2.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
 
 If Sakto is already installed, tap **Update**. Do not uninstall first if you want to keep existing records.
 

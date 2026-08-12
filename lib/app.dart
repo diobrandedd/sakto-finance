@@ -94,21 +94,32 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
   bool _tourVisible = false;
+  TourGuide _tourGuide = TourGuide.full;
   final _tourKeys = TourKeys();
+
+  List<TourStep> get _tourSteps => stepsForGuide(_tourGuide);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!ref.read(tourCompletedProvider)) {
-        _startTour();
+        _startTour(TourGuide.full);
       }
     });
   }
 
-  void _startTour() {
+  Future<void> _pickAndStartTour() async {
+    final guide = await showTourGuidePicker(context);
+    if (guide == null || !mounted) return;
+    _startTour(guide);
+  }
+
+  void _startTour(TourGuide guide) {
+    final steps = stepsForGuide(guide);
     setState(() {
-      _index = 0;
+      _tourGuide = guide;
+      _index = tabIndexForTourTarget(steps.first.target);
       _tourVisible = true;
     });
   }
@@ -119,13 +130,8 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _onTourStepChanged(int stepIndex) {
-    final target = saktoTourSteps[stepIndex].target;
-    final nextIndex = switch (target) {
-      TourTarget.accounts => 1,
-      TourTarget.reports => 3,
-      TourTarget.more => 4,
-      _ => 0,
-    };
+    final target = _tourSteps[stepIndex].target;
+    final nextIndex = tabIndexForTourTarget(target);
     if (_index != nextIndex) {
       setState(() => _index = nextIndex);
     }
@@ -133,23 +139,27 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<int>(tourRequestProvider, (previous, next) {
-      if (previous != next) {
+    ref.listen<TourRequest?>(tourRequestProvider, (previous, next) {
+      if (next != null && next.id != previous?.id) {
         Navigator.of(context).popUntil((route) => route.isFirst);
-        _startTour();
+        _startTour(next.guide);
       }
     });
     final pages = [
       HomeScreen(
         helpKey: _tourKeys.help,
-        settingsKey: _tourKeys.settings,
         homeKey: _tourKeys.home,
-        onReplayTour: _startTour,
+        onChooseGuide: _pickAndStartTour,
       ),
       const AccountsScreen(),
       const SizedBox.shrink(),
       const ReportsScreen(),
-      const MoreScreen(),
+      MoreScreen(
+        creditsKey: _tourKeys.credits,
+        lentKey: _tourKeys.lent,
+        incomeKey: _tourKeys.income,
+        settingsKey: _tourKeys.settings,
+      ),
     ];
     return Stack(
       children: [
@@ -185,34 +195,46 @@ class _AppShellState extends ConsumerState<AppShell> {
               }
             },
             destinations: [
+              // Keep keys on `icon` only — `selectedIcon` replaces `icon` when
+              // selected, which unmounts the GlobalKey and kills the spotlight.
               const NavigationDestination(
                 icon: Icon(Icons.pie_chart_outline_rounded),
-                selectedIcon: Icon(Icons.pie_chart_rounded),
                 label: 'Home',
               ),
               NavigationDestination(
                 icon: KeyedSubtree(
                   key: _tourKeys.accounts,
-                  child: const Icon(Icons.account_balance_wallet_outlined),
+                  child: const SizedBox(
+                    width: 64,
+                    height: 40,
+                    child: Center(
+                      child: Icon(Icons.account_balance_wallet_outlined),
+                    ),
+                  ),
                 ),
-                selectedIcon: const Icon(Icons.account_balance_wallet_rounded),
                 label: 'Accounts',
               ),
               const NavigationDestination(icon: SizedBox(width: 32), label: ''),
               NavigationDestination(
                 icon: KeyedSubtree(
                   key: _tourKeys.reports,
-                  child: const Icon(Icons.calendar_month_outlined),
+                  child: const SizedBox(
+                    width: 64,
+                    height: 40,
+                    child: Center(child: Icon(Icons.calendar_month_outlined)),
+                  ),
                 ),
-                selectedIcon: const Icon(Icons.calendar_month_rounded),
                 label: 'Reports',
               ),
               NavigationDestination(
                 icon: KeyedSubtree(
                   key: _tourKeys.more,
-                  child: const Icon(Icons.grid_view_outlined),
+                  child: const SizedBox(
+                    width: 64,
+                    height: 40,
+                    child: Center(child: Icon(Icons.grid_view_outlined)),
+                  ),
                 ),
-                selectedIcon: const Icon(Icons.grid_view_rounded),
                 label: 'More',
               ),
             ],
@@ -221,7 +243,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         if (_tourVisible)
           Positioned.fill(
             child: AppTourOverlay(
+              key: ValueKey(_tourGuide),
               keys: _tourKeys,
+              steps: _tourSteps,
               onFinished: _finishTour,
               onStepChanged: _onTourStepChanged,
             ),
@@ -321,16 +345,14 @@ Future<bool> confirmDelete(BuildContext context, String message) async =>
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({
     required this.helpKey,
-    required this.settingsKey,
     required this.homeKey,
-    required this.onReplayTour,
+    required this.onChooseGuide,
     super.key,
   });
 
   final GlobalKey helpKey;
-  final GlobalKey settingsKey;
   final GlobalKey homeKey;
-  final VoidCallback onReplayTour;
+  final VoidCallback onChooseGuide;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -352,12 +374,11 @@ class HomeScreen extends ConsumerWidget {
             subtitle: 'Your money, exactly where it stands',
             leading: IconButton(
               key: helpKey,
-              tooltip: 'Replay app tour',
-              onPressed: onReplayTour,
+              tooltip: 'Choose a guide',
+              onPressed: onChooseGuide,
               icon: const Icon(Icons.help_outline_rounded),
             ),
             action: IconButton(
-              key: settingsKey,
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
@@ -1437,30 +1458,45 @@ class _ReportMetric extends StatelessWidget {
 }
 
 class MoreScreen extends StatelessWidget {
-  const MoreScreen({super.key});
+  const MoreScreen({
+    this.creditsKey,
+    this.lentKey,
+    this.incomeKey,
+    this.settingsKey,
+    super.key,
+  });
+
+  final GlobalKey? creditsKey;
+  final GlobalKey? lentKey;
+  final GlobalKey? incomeKey;
+  final GlobalKey? settingsKey;
 
   @override
   Widget build(BuildContext context) {
     final items = [
       (
+        creditsKey,
         'Credits',
         'Loans and installment purchases',
         Icons.credit_card,
         const CreditsScreen(),
       ),
       (
+        lentKey,
         'Lent money',
         'Money others owe you',
         Icons.handshake_outlined,
         const LentMoneyScreen(),
       ),
       (
+        incomeKey,
         'Income sources',
         'Recurring pay and forecasting',
         Icons.event_repeat,
         const IncomeSourcesScreen(),
       ),
       (
+        settingsKey,
         'Settings',
         'Theme, background, notifications, and backup',
         Icons.settings_outlined,
@@ -1478,22 +1514,23 @@ class MoreScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = items[index];
               return Card(
+                key: item.$1,
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(14),
                   leading: CircleAvatar(
                     backgroundColor: context.sakto.accentLight,
                     foregroundColor: context.sakto.accent,
-                    child: Icon(item.$3),
+                    child: Icon(item.$4),
                   ),
                   title: Text(
-                    item.$1,
+                    item.$2,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  subtitle: Text(item.$2),
+                  subtitle: Text(item.$3),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => item.$4),
+                    MaterialPageRoute(builder: (_) => item.$5),
                   ),
                 ),
               );
@@ -2635,11 +2672,16 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 ListTile(
                   leading: const Icon(Icons.help_outline_rounded),
-                  title: const Text('Replay app tour'),
-                  subtitle: const Text('Walk through where to tap again'),
+                  title: const Text('App guides'),
+                  subtitle: const Text(
+                    'Replay everything, Lent money, or Income sources',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    ref.read(tourRequestProvider.notifier).state++;
+                  onTap: () async {
+                    final guide = await showTourGuidePicker(context);
+                    if (guide == null) return;
+                    ref.read(tourRequestProvider.notifier).state =
+                        TourRequest(guide);
                   },
                 ),
                 const Divider(height: 1),

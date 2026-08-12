@@ -10,7 +10,14 @@ final tourCompletedProvider =
       (ref) => TourCompletedController(ref.watch(sharedPreferencesProvider)),
     );
 
-final tourRequestProvider = StateProvider<int>((ref) => 0);
+final tourRequestProvider = StateProvider<TourRequest?>((ref) => null);
+
+class TourRequest {
+  TourRequest(this.guide) : id = DateTime.now().microsecondsSinceEpoch;
+
+  final TourGuide guide;
+  final int id;
+}
 
 class TourCompletedController extends StateNotifier<bool> {
   TourCompletedController(this._prefs) : super(_prefs.getBool(_key) ?? false);
@@ -29,7 +36,21 @@ class TourCompletedController extends StateNotifier<bool> {
   }
 }
 
-enum TourTarget { welcome, help, home, accounts, add, reports, more, settings }
+enum TourGuide { full, lentMoney, incomeSources }
+
+enum TourTarget {
+  welcome,
+  help,
+  home,
+  accounts,
+  add,
+  reports,
+  more,
+  credits,
+  lent,
+  income,
+  settings,
+}
 
 class TourStep {
   const TourStep({
@@ -43,12 +64,12 @@ class TourStep {
   final String body;
 }
 
-const saktoTourSteps = [
+const fullTourSteps = [
   TourStep(
     target: TourTarget.welcome,
     title: 'Welcome to Sakto',
     body:
-        'This quick tour shows where to tap. You can replay it anytime with the ? button.',
+        'This quick tour shows where to tap. Tap ? anytime to replay everything, or jump to Lent money or Income sources only.',
   ),
   TourStep(
     target: TourTarget.home,
@@ -78,7 +99,25 @@ const saktoTourSteps = [
     target: TourTarget.more,
     title: 'More tools',
     body:
-        'Open Credits, Lent money, Income sources, and Settings from the More tab.',
+        'Credits, lent money, income sources, and Settings are all under the More tab.',
+  ),
+  TourStep(
+    target: TourTarget.credits,
+    title: 'Credits',
+    body:
+        'Track loans and installment purchases you owe — principal, schedule, and payment progress.',
+  ),
+  TourStep(
+    target: TourTarget.lent,
+    title: 'Lent money',
+    body:
+        'When you lend money, Sakto deducts the amount from the account you choose. When they pay you back, you pick which account receives it.',
+  ),
+  TourStep(
+    target: TourTarget.income,
+    title: 'Income sources',
+    body:
+        'Add recurring pay here so Home can estimate month-end balance from expected income.',
   ),
   TourStep(
     target: TourTarget.settings,
@@ -88,11 +127,122 @@ const saktoTourSteps = [
   ),
   TourStep(
     target: TourTarget.help,
-    title: 'Replay this tour',
+    title: 'Pick a guide anytime',
     body:
-        'Tap the ? anytime to walk through Sakto again. You can skip the tour whenever you want.',
+        'Tap ? to choose Replay everything, Lent money, or Income sources. You can skip a guide whenever you want.',
   ),
 ];
+
+const lentMoneyTourSteps = [
+  TourStep(
+    target: TourTarget.more,
+    title: 'Find Lent money',
+    body: 'Open the More tab to track money others owe you.',
+  ),
+  TourStep(
+    target: TourTarget.lent,
+    title: 'Lent money',
+    body:
+        'When you lend money, Sakto deducts the amount from the account you choose. When they pay you back, you pick which account receives it.',
+  ),
+];
+
+const incomeSourcesTourSteps = [
+  TourStep(
+    target: TourTarget.more,
+    title: 'Find Income sources',
+    body: 'Open the More tab to set up recurring pay for forecasting.',
+  ),
+  TourStep(
+    target: TourTarget.income,
+    title: 'Income sources',
+    body:
+        'Add recurring pay here so Home can estimate month-end balance from expected income.',
+  ),
+];
+
+List<TourStep> stepsForGuide(TourGuide guide) => switch (guide) {
+  TourGuide.full => fullTourSteps,
+  TourGuide.lentMoney => lentMoneyTourSteps,
+  TourGuide.incomeSources => incomeSourcesTourSteps,
+};
+
+int tabIndexForTourTarget(TourTarget target) => switch (target) {
+  TourTarget.accounts => 1,
+  TourTarget.reports => 3,
+  TourTarget.more ||
+  TourTarget.credits ||
+  TourTarget.lent ||
+  TourTarget.income ||
+  TourTarget.settings =>
+    4,
+  _ => 0,
+};
+
+Future<TourGuide?> showTourGuidePicker(BuildContext context) {
+  return showModalBottomSheet<TourGuide>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) {
+      final colors = context.sakto;
+      Widget option({
+        required IconData icon,
+        required String title,
+        required String subtitle,
+        required TourGuide guide,
+      }) {
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: colors.accentLight,
+            foregroundColor: colors.accent,
+            child: Icon(icon),
+          ),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.pop(context, guide),
+        );
+      }
+
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Text(
+                  'Choose a guide',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              option(
+                icon: Icons.all_inclusive_rounded,
+                title: 'Replay everything',
+                subtitle: 'Full walkthrough of Home, tabs, and More tools',
+                guide: TourGuide.full,
+              ),
+              option(
+                icon: Icons.handshake_outlined,
+                title: 'Lent money',
+                subtitle: 'How lending deducts from an account',
+                guide: TourGuide.lentMoney,
+              ),
+              option(
+                icon: Icons.event_repeat,
+                title: 'Income sources',
+                subtitle: 'Recurring pay and month-end forecasts',
+                guide: TourGuide.incomeSources,
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
 
 class TourKeys {
   TourKeys();
@@ -104,6 +254,9 @@ class TourKeys {
   final add = GlobalKey();
   final reports = GlobalKey();
   final more = GlobalKey();
+  final credits = GlobalKey();
+  final lent = GlobalKey();
+  final income = GlobalKey();
 
   GlobalKey? keyFor(TourTarget target) => switch (target) {
     TourTarget.welcome => null,
@@ -113,6 +266,9 @@ class TourKeys {
     TourTarget.add => add,
     TourTarget.reports => reports,
     TourTarget.more => more,
+    TourTarget.credits => credits,
+    TourTarget.lent => lent,
+    TourTarget.income => income,
     TourTarget.settings => settings,
   };
 }
@@ -120,12 +276,14 @@ class TourKeys {
 class AppTourOverlay extends StatefulWidget {
   const AppTourOverlay({
     required this.keys,
+    required this.steps,
     required this.onFinished,
     required this.onStepChanged,
     super.key,
   });
 
   final TourKeys keys;
+  final List<TourStep> steps;
   final VoidCallback onFinished;
   final ValueChanged<int> onStepChanged;
 
@@ -136,26 +294,41 @@ class AppTourOverlay extends StatefulWidget {
 class _AppTourOverlayState extends State<AppTourOverlay> {
   int _index = 0;
   Rect? _hole;
+  int _measureToken = 0;
 
-  TourStep get _step => saktoTourSteps[_index];
+  List<TourStep> get _steps => widget.steps;
+  TourStep get _step => _steps[_index];
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onStepChanged(_index);
+      _measure();
+    });
   }
 
-  Future<void> _measure() async {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    if (!mounted) return;
+  Future<void> _measure({int attempt = 0}) async {
+    final token = ++_measureToken;
+    await Future<void>.delayed(Duration(milliseconds: attempt == 0 ? 50 : 120));
+    if (!mounted || token != _measureToken) return;
+
     final key = widget.keys.keyFor(_step.target);
     final targetContext = key?.currentContext;
     if (targetContext == null || !targetContext.mounted) {
+      if (attempt < 8) {
+        await _measure(attempt: attempt + 1);
+        return;
+      }
       setState(() => _hole = null);
       return;
     }
     final box = targetContext.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) {
+      if (attempt < 8) {
+        await _measure(attempt: attempt + 1);
+        return;
+      }
       setState(() => _hole = null);
       return;
     }
@@ -176,14 +349,13 @@ class _AppTourOverlayState extends State<AppTourOverlay> {
       _hole = null;
     });
     widget.onStepChanged(index);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      if (mounted) await _measure();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _measure();
     });
   }
 
   Future<void> _next() async {
-    if (_index >= saktoTourSteps.length - 1) {
+    if (_index >= _steps.length - 1) {
       widget.onFinished();
       return;
     }
@@ -203,6 +375,7 @@ class _AppTourOverlayState extends State<AppTourOverlay> {
         ? 72.0
         : null;
     final cardBottom = cardTop == null ? 110.0 : null;
+    final isLast = _index == _steps.length - 1;
 
     return Material(
       color: Colors.transparent,
@@ -266,7 +439,7 @@ class _AppTourOverlayState extends State<AppTourOverlay> {
                               borderRadius: BorderRadius.circular(99),
                             ),
                             child: Text(
-                              'Step ${_index + 1} of ${saktoTourSteps.length}',
+                              'Step ${_index + 1} of ${_steps.length}',
                               style: TextStyle(
                                 color: colors.accent,
                                 fontWeight: FontWeight.w700,
@@ -303,8 +476,6 @@ class _AppTourOverlayState extends State<AppTourOverlay> {
                           FilledButton(
                             onPressed: _next,
                             style: FilledButton.styleFrom(
-                              // Theme default uses Size.fromHeight (infinite
-                              // width), which collapses this button in a Row.
                               minimumSize: const Size(96, 44),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 20,
@@ -314,7 +485,7 @@ class _AppTourOverlayState extends State<AppTourOverlay> {
                               foregroundColor: Colors.white,
                             ),
                             child: Text(
-                              _index == saktoTourSteps.length - 1
+                              isLast
                                   ? 'Done'
                                   : (_index == 0 ? 'Start' : 'Next'),
                             ),
