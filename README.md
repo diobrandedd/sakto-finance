@@ -66,14 +66,14 @@ Sakto is a private, offline-first money tracker built for Android with Flutter. 
 
 Download the latest Android APK from the [GitHub Releases page](https://github.com/diobrandedd/sakto-finance/releases/latest).
 
-Current release: **[Sakto v1.6.0](https://github.com/diobrandedd/sakto-finance/releases/tag/v1.6.0)**
+Current release: **[Sakto v1.6.1](https://github.com/diobrandedd/sakto-finance/releases/tag/v1.6.1)**
 
-1. On your Android phone, download [`sakto-v1.6.0.apk`](https://github.com/diobrandedd/sakto-finance/releases/download/v1.6.0/sakto-v1.6.0.apk).
+1. On your Android phone, download [`sakto-v1.6.1.apk`](https://github.com/diobrandedd/sakto-finance/releases/download/v1.6.1/sakto-v1.6.1.apk).
 2. Open the downloaded file.
 3. Allow **Install unknown apps** for your browser or file manager when Android asks.
 4. Tap **Install** or **Update**.
 
-If you already have Sakto installed, install v1.6.0 over it. Do not uninstall first — that would delete local data. Creating a backup before any update is still recommended.
+If you already have Sakto installed, install v1.6.1 over it. Do not uninstall first — that would delete local data. Creating a backup before any update is still recommended.
 
 ---
 

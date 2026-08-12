@@ -201,7 +201,9 @@ ThemeData buildAppTheme(
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
+        // Prefer a finite min size so buttons still layout inside Rows.
+        // Full-width forms can still expand via width constraints.
+        minimumSize: const Size(64, 52),
         backgroundColor: colors.accent,
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

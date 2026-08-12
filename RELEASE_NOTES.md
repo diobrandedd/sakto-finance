@@ -1,17 +1,15 @@
-# Sakto v1.6.0
+# Sakto v1.6.1
 
-First-run guidance and smoother browser support for the offline personal finance tracker.
+Patch release that restores the tour Continue / Next / Done button.
 
 ## Highlights
 
-- Guided spotlight tour on first launch covering the main tabs and core actions
-- Replay the tour anytime from Home (`?`) or Settings → Replay app tour
-- Chrome/web can open the local Drift database with bundled SQLite WASM assets
-- Platform file helpers so gallery background and backup flows stay Android-safe on web
+- Tour card now shows a visible **Start** / **Next** / **Done** button so you can move through the guide
+- Filled buttons no longer collapse when placed in a row (theme min-size fix)
 
 ## Install
 
-Download `sakto-v1.6.0.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
+Download `sakto-v1.6.1.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
 
 If Sakto is already installed, tap **Update**. Do not uninstall first if you want to keep existing records.
 

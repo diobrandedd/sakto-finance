@@ -302,10 +302,21 @@ class _AppTourOverlayState extends State<AppTourOverlay> {
                           const Spacer(),
                           FilledButton(
                             onPressed: _next,
+                            style: FilledButton.styleFrom(
+                              // Theme default uses Size.fromHeight (infinite
+                              // width), which collapses this button in a Row.
+                              minimumSize: const Size(96, 44),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                              backgroundColor: colors.accent,
+                              foregroundColor: Colors.white,
+                            ),
                             child: Text(
                               _index == saktoTourSteps.length - 1
                                   ? 'Done'
-                                  : 'Next',
+                                  : (_index == 0 ? 'Start' : 'Next'),
                             ),
                           ),
                         ],
