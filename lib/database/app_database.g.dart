@@ -3502,6 +3502,18 @@ class $IncomeSourcesTable extends IncomeSources
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _lastPostedDateMeta = const VerificationMeta(
+    'lastPostedDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastPostedDate =
+      GeneratedColumn<DateTime>(
+        'last_posted_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _activeMeta = const VerificationMeta('active');
   @override
   late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
@@ -3525,6 +3537,7 @@ class $IncomeSourcesTable extends IncomeSources
     payDayOfMonth,
     accountId,
     startDate,
+    lastPostedDate,
     active,
   ];
   @override
@@ -3597,6 +3610,15 @@ class $IncomeSourcesTable extends IncomeSources
     } else if (isInserting) {
       context.missing(_startDateMeta);
     }
+    if (data.containsKey('last_posted_date')) {
+      context.handle(
+        _lastPostedDateMeta,
+        lastPostedDate.isAcceptableOrUnknown(
+          data['last_posted_date']!,
+          _lastPostedDateMeta,
+        ),
+      );
+    }
     if (data.containsKey('active')) {
       context.handle(
         _activeMeta,
@@ -3644,6 +3666,10 @@ class $IncomeSourcesTable extends IncomeSources
         DriftSqlType.dateTime,
         data['${effectivePrefix}start_date'],
       )!,
+      lastPostedDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_posted_date'],
+      ),
       active: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}active'],
@@ -3666,6 +3692,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
   final int? payDayOfMonth;
   final int accountId;
   final DateTime startDate;
+  final DateTime? lastPostedDate;
   final bool active;
   const IncomeSource({
     required this.id,
@@ -3676,6 +3703,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
     this.payDayOfMonth,
     required this.accountId,
     required this.startDate,
+    this.lastPostedDate,
     required this.active,
   });
   @override
@@ -3693,6 +3721,9 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
     }
     map['account_id'] = Variable<int>(accountId);
     map['start_date'] = Variable<DateTime>(startDate);
+    if (!nullToAbsent || lastPostedDate != null) {
+      map['last_posted_date'] = Variable<DateTime>(lastPostedDate);
+    }
     map['active'] = Variable<bool>(active);
     return map;
   }
@@ -3711,6 +3742,9 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
           : Value(payDayOfMonth),
       accountId: Value(accountId),
       startDate: Value(startDate),
+      lastPostedDate: lastPostedDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastPostedDate),
       active: Value(active),
     );
   }
@@ -3729,6 +3763,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
       payDayOfMonth: serializer.fromJson<int?>(json['payDayOfMonth']),
       accountId: serializer.fromJson<int>(json['accountId']),
       startDate: serializer.fromJson<DateTime>(json['startDate']),
+      lastPostedDate: serializer.fromJson<DateTime?>(json['lastPostedDate']),
       active: serializer.fromJson<bool>(json['active']),
     );
   }
@@ -3744,6 +3779,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
       'payDayOfMonth': serializer.toJson<int?>(payDayOfMonth),
       'accountId': serializer.toJson<int>(accountId),
       'startDate': serializer.toJson<DateTime>(startDate),
+      'lastPostedDate': serializer.toJson<DateTime?>(lastPostedDate),
       'active': serializer.toJson<bool>(active),
     };
   }
@@ -3757,6 +3793,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
     Value<int?> payDayOfMonth = const Value.absent(),
     int? accountId,
     DateTime? startDate,
+    Value<DateTime?> lastPostedDate = const Value.absent(),
     bool? active,
   }) => IncomeSource(
     id: id ?? this.id,
@@ -3769,6 +3806,9 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
         : this.payDayOfMonth,
     accountId: accountId ?? this.accountId,
     startDate: startDate ?? this.startDate,
+    lastPostedDate: lastPostedDate.present
+        ? lastPostedDate.value
+        : this.lastPostedDate,
     active: active ?? this.active,
   );
   IncomeSource copyWithCompanion(IncomeSourcesCompanion data) {
@@ -3785,6 +3825,9 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
           : this.payDayOfMonth,
       accountId: data.accountId.present ? data.accountId.value : this.accountId,
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      lastPostedDate: data.lastPostedDate.present
+          ? data.lastPostedDate.value
+          : this.lastPostedDate,
       active: data.active.present ? data.active.value : this.active,
     );
   }
@@ -3800,6 +3843,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
           ..write('payDayOfMonth: $payDayOfMonth, ')
           ..write('accountId: $accountId, ')
           ..write('startDate: $startDate, ')
+          ..write('lastPostedDate: $lastPostedDate, ')
           ..write('active: $active')
           ..write(')'))
         .toString();
@@ -3815,6 +3859,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
     payDayOfMonth,
     accountId,
     startDate,
+    lastPostedDate,
     active,
   );
   @override
@@ -3829,6 +3874,7 @@ class IncomeSource extends DataClass implements Insertable<IncomeSource> {
           other.payDayOfMonth == this.payDayOfMonth &&
           other.accountId == this.accountId &&
           other.startDate == this.startDate &&
+          other.lastPostedDate == this.lastPostedDate &&
           other.active == this.active);
 }
 
@@ -3841,6 +3887,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
   final Value<int?> payDayOfMonth;
   final Value<int> accountId;
   final Value<DateTime> startDate;
+  final Value<DateTime?> lastPostedDate;
   final Value<bool> active;
   const IncomeSourcesCompanion({
     this.id = const Value.absent(),
@@ -3851,6 +3898,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
     this.payDayOfMonth = const Value.absent(),
     this.accountId = const Value.absent(),
     this.startDate = const Value.absent(),
+    this.lastPostedDate = const Value.absent(),
     this.active = const Value.absent(),
   });
   IncomeSourcesCompanion.insert({
@@ -3862,6 +3910,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
     this.payDayOfMonth = const Value.absent(),
     required int accountId,
     required DateTime startDate,
+    this.lastPostedDate = const Value.absent(),
     this.active = const Value.absent(),
   }) : name = Value(name),
        amount = Value(amount),
@@ -3877,6 +3926,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
     Expression<int>? payDayOfMonth,
     Expression<int>? accountId,
     Expression<DateTime>? startDate,
+    Expression<DateTime>? lastPostedDate,
     Expression<bool>? active,
   }) {
     return RawValuesInsertable({
@@ -3888,6 +3938,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
       if (payDayOfMonth != null) 'pay_day_of_month': payDayOfMonth,
       if (accountId != null) 'account_id': accountId,
       if (startDate != null) 'start_date': startDate,
+      if (lastPostedDate != null) 'last_posted_date': lastPostedDate,
       if (active != null) 'active': active,
     });
   }
@@ -3901,6 +3952,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
     Value<int?>? payDayOfMonth,
     Value<int>? accountId,
     Value<DateTime>? startDate,
+    Value<DateTime?>? lastPostedDate,
     Value<bool>? active,
   }) {
     return IncomeSourcesCompanion(
@@ -3912,6 +3964,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
       payDayOfMonth: payDayOfMonth ?? this.payDayOfMonth,
       accountId: accountId ?? this.accountId,
       startDate: startDate ?? this.startDate,
+      lastPostedDate: lastPostedDate ?? this.lastPostedDate,
       active: active ?? this.active,
     );
   }
@@ -3943,6 +3996,9 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
     if (startDate.present) {
       map['start_date'] = Variable<DateTime>(startDate.value);
     }
+    if (lastPostedDate.present) {
+      map['last_posted_date'] = Variable<DateTime>(lastPostedDate.value);
+    }
     if (active.present) {
       map['active'] = Variable<bool>(active.value);
     }
@@ -3960,6 +4016,7 @@ class IncomeSourcesCompanion extends UpdateCompanion<IncomeSource> {
           ..write('payDayOfMonth: $payDayOfMonth, ')
           ..write('accountId: $accountId, ')
           ..write('startDate: $startDate, ')
+          ..write('lastPostedDate: $lastPostedDate, ')
           ..write('active: $active')
           ..write(')'))
         .toString();
@@ -7307,6 +7364,7 @@ typedef $$IncomeSourcesTableCreateCompanionBuilder =
       Value<int?> payDayOfMonth,
       required int accountId,
       required DateTime startDate,
+      Value<DateTime?> lastPostedDate,
       Value<bool> active,
     });
 typedef $$IncomeSourcesTableUpdateCompanionBuilder =
@@ -7319,6 +7377,7 @@ typedef $$IncomeSourcesTableUpdateCompanionBuilder =
       Value<int?> payDayOfMonth,
       Value<int> accountId,
       Value<DateTime> startDate,
+      Value<DateTime?> lastPostedDate,
       Value<bool> active,
     });
 
@@ -7389,6 +7448,11 @@ class $$IncomeSourcesTableFilterComposer
 
   ColumnFilters<DateTime> get startDate => $composableBuilder(
     column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastPostedDate => $composableBuilder(
+    column: $table.lastPostedDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7465,6 +7529,11 @@ class $$IncomeSourcesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get lastPostedDate => $composableBuilder(
+    column: $table.lastPostedDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get active => $composableBuilder(
     column: $table.active,
     builder: (column) => ColumnOrderings(column),
@@ -7527,6 +7596,11 @@ class $$IncomeSourcesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get startDate =>
       $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastPostedDate => $composableBuilder(
+    column: $table.lastPostedDate,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get active =>
       $composableBuilder(column: $table.active, builder: (column) => column);
@@ -7591,6 +7665,7 @@ class $$IncomeSourcesTableTableManager
                 Value<int?> payDayOfMonth = const Value.absent(),
                 Value<int> accountId = const Value.absent(),
                 Value<DateTime> startDate = const Value.absent(),
+                Value<DateTime?> lastPostedDate = const Value.absent(),
                 Value<bool> active = const Value.absent(),
               }) => IncomeSourcesCompanion(
                 id: id,
@@ -7601,6 +7676,7 @@ class $$IncomeSourcesTableTableManager
                 payDayOfMonth: payDayOfMonth,
                 accountId: accountId,
                 startDate: startDate,
+                lastPostedDate: lastPostedDate,
                 active: active,
               ),
           createCompanionCallback:
@@ -7613,6 +7689,7 @@ class $$IncomeSourcesTableTableManager
                 Value<int?> payDayOfMonth = const Value.absent(),
                 required int accountId,
                 required DateTime startDate,
+                Value<DateTime?> lastPostedDate = const Value.absent(),
                 Value<bool> active = const Value.absent(),
               }) => IncomeSourcesCompanion.insert(
                 id: id,
@@ -7623,6 +7700,7 @@ class $$IncomeSourcesTableTableManager
                 payDayOfMonth: payDayOfMonth,
                 accountId: accountId,
                 startDate: startDate,
+                lastPostedDate: lastPostedDate,
                 active: active,
               ),
           withReferenceMapper: (p0) => p0

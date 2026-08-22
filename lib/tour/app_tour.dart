@@ -117,7 +117,7 @@ const fullTourSteps = [
     target: TourTarget.income,
     title: 'Income sources',
     body:
-        'Add recurring pay here so Home can estimate month-end balance from expected income.',
+        'Add recurring salary here. Sakto deposits it on payday — Home “Upcoming pay” is only an estimate until then.',
   ),
   TourStep(
     target: TourTarget.settings,
@@ -151,13 +151,13 @@ const incomeSourcesTourSteps = [
   TourStep(
     target: TourTarget.more,
     title: 'Find Income sources',
-    body: 'Open the More tab to set up recurring pay for forecasting.',
+    body: 'Open the More tab to set up recurring pay that deposits on payday.',
   ),
   TourStep(
     target: TourTarget.income,
     title: 'Income sources',
     body:
-        'Add recurring pay here so Home can estimate month-end balance from expected income.',
+        'Add recurring salary here. Sakto deposits it on payday — Home “Upcoming pay” is only an estimate until then.',
   ),
 ];
 
@@ -233,7 +233,7 @@ Future<TourGuide?> showTourGuidePicker(BuildContext context) {
               option(
                 icon: Icons.event_repeat,
                 title: 'Income sources',
-                subtitle: 'Recurring pay and month-end forecasts',
+                subtitle: 'Auto-deposit on payday and month-end forecasts',
                 guide: TourGuide.incomeSources,
               ),
             ],

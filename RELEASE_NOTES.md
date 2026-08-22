@@ -1,17 +1,17 @@
-# Sakto v1.6.2
+# Sakto v1.6.3
 
-Richer app guides with working spotlights and a chooser for focused walkthroughs.
+Recurring income now deposits into your account on payday, with clearer Home forecast labels.
 
 ## Highlights
 
-- Spotlight cutouts now work on Accounts, Reports, and More tabs
-- Full tour covers Credits, Lent money, Income sources, and Settings under More
-- Lent money step explains that lending deducts from the account you choose
-- Tap ? (or Settings → App guides) to pick: Replay everything, Lent money, or Income sources
+- Income sources auto-deposit into the account you choose on each payday
+- Home shows **Upcoming pay** as an estimate only — not money already in the account
+- + Income warns when salary is already scheduled, so you do not double-log a paycheck
+- Income source screens and guides spell out auto-deposit vs one-off income
 
 ## Install
 
-Download `sakto-v1.6.2.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
+Download `sakto-v1.6.3.apk` below, open it on an Android phone, and allow installation from the browser or file manager when prompted.
 
 If Sakto is already installed, tap **Update**. Do not uninstall first if you want to keep existing records.
 
@@ -24,3 +24,4 @@ Sakto has no backend, account, or cloud database. Financial records stay in the 
 - A fresh installation starts with no financial records.
 - Uninstalling the app removes local data unless a backup was exported.
 - Keep a recent backup before updating or uninstalling.
+- If you already logged a paycheck manually and payday catch-up also deposits it, delete the duplicate transaction.

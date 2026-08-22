@@ -37,6 +37,9 @@ final lentProvider = StreamProvider<List<LentMoneyData>>(
 final incomeSourcesProvider = StreamProvider<List<IncomeSource>>(
   (ref) => ref.watch(databaseProvider).watchIncomeSources(),
 );
+final incomeAutoPostProvider = FutureProvider<int>((ref) async {
+  return ref.watch(databaseProvider).applyDueIncomeSources();
+});
 
 final money = NumberFormat.currency(
   locale: 'en_PH',
@@ -356,6 +359,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(incomeAutoPostProvider);
     final accounts = ref.watch(accountsProvider);
     final transactions = ref.watch(recentProvider);
     final sources = ref.watch(incomeSourcesProvider);
@@ -684,8 +688,8 @@ class _ForecastCardState extends State<_ForecastCard> {
               ),
               Text(
                 includeBills
-                    ? 'Known bills due in the next 7 days are included'
-                    : 'Upcoming bills are excluded',
+                    ? 'Upcoming pay is estimated only — salary deposits on payday. Bills due in 7 days are included.'
+                    : 'Upcoming pay is estimated only — salary deposits on payday. Bills are excluded.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 16),
@@ -693,7 +697,7 @@ class _ForecastCardState extends State<_ForecastCard> {
                 children: [
                   _ForecastMetric('Current', widget.data.current),
                   _ForecastMetric(
-                    'Income est.',
+                    'Upcoming pay',
                     widget.data.income,
                     color: AppColors.green,
                   ),
@@ -1046,6 +1050,26 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               creditId = null;
             }),
           ),
+          if (type == 'income' &&
+              (ref.watch(incomeSourcesProvider).valueOrNull?.isNotEmpty ??
+                  false)) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  Icons.info_outline_rounded,
+                  color: context.sakto.accent,
+                ),
+                title: const Text(
+                  'Salary already scheduled?',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: const Text(
+                  'Recurring Income sources deposit on payday automatically. Use + Income only for one-off money (gifts, refunds), not your regular salary.',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           TextField(
             controller: amount,
@@ -1491,7 +1515,7 @@ class MoreScreen extends StatelessWidget {
       (
         incomeKey,
         'Income sources',
-        'Recurring pay and forecasting',
+        'Recurring pay deposited on payday',
         Icons.event_repeat,
         const IncomeSourcesScreen(),
       ),
@@ -2319,7 +2343,8 @@ class IncomeSourcesScreen extends ConsumerWidget {
             ? const EmptyState(
                 icon: Icons.event_repeat,
                 title: 'No recurring income',
-                message: 'Add salary or other recurring pay for forecasting.',
+                message:
+                    'Add salary here once. On payday Sakto deposits it into your account — you do not need to tap + Income for that paycheck.',
               )
             : ListView.separated(
                 padding: const EdgeInsets.all(16),
@@ -2341,7 +2366,9 @@ class IncomeSourcesScreen extends ConsumerWidget {
                         source.name,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      subtitle: Text('${source.frequency}  •  tap to edit'),
+                      subtitle: Text(
+                        '${source.frequency}  •  auto-deposits on payday',
+                      ),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -2354,7 +2381,7 @@ class IncomeSourcesScreen extends ConsumerWidget {
                             onTap: () async {
                               final confirmed = await confirmDelete(
                                 context,
-                                'This removes the recurring income from forecasts.',
+                                'This stops auto-deposits and removes it from upcoming pay on Home.',
                               );
                               if (!confirmed) return;
                               await ref
@@ -2460,7 +2487,9 @@ Future<void> _showIncomeEditor(
             DropdownButtonFormField<int>(
               initialValue: accountId,
               decoration: const InputDecoration(
-                labelText: 'Destination account',
+                labelText: 'Deposit to account',
+                helperText:
+                    'On payday Sakto adds this as real income. Do not also log it with + Income.',
               ),
               items: accounts
                   .map(
@@ -2522,7 +2551,7 @@ Future<void> _showIncomeEditor(
                 onPressed: () async {
                   final confirmed = await confirmDelete(
                     sheetContext,
-                    'This removes the recurring income from forecasts.',
+                    'This stops auto-deposits and removes it from upcoming pay on Home.',
                   );
                   if (!confirmed) return;
                   await ref

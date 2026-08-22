@@ -95,6 +95,7 @@ class IncomeSources extends Table {
   IntColumn get payDayOfMonth => integer().nullable()();
   IntColumn get accountId => integer().references(Accounts, #id)();
   DateTimeColumn get startDate => dateTime()();
+  DateTimeColumn get lastPostedDate => dateTime().nullable()();
   BoolColumn get active => boolean().withDefault(const Constant(true))();
 }
 
@@ -135,13 +136,18 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
       await _seedCategories();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(incomeSources, incomeSources.lastPostedDate);
+      }
     },
   );
 
@@ -528,6 +534,126 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteIncomeSource(int id) =>
       (delete(incomeSources)..where((s) => s.id.equals(id))).go();
+
+  /// Posts due recurring income into destination accounts (once per payday).
+  Future<int> applyDueIncomeSources([DateTime? now]) async {
+    final moment = now ?? DateTime.now();
+    final today = DateTime(moment.year, moment.month, moment.day);
+    final sources = await (select(
+      incomeSources,
+    )..where((s) => s.active.equals(true))).get();
+    if (sources.isEmpty) return 0;
+
+    final salaryCategory =
+        await (select(categories)..where(
+              (c) => c.type.equals('income') & c.name.equals('Salary'),
+            ))
+            .getSingleOrNull();
+    final fallbackIncome =
+        await (select(categories)..where((c) => c.type.equals('income')))
+            .get()
+            .then((rows) => rows.firstOrNull);
+
+    var postedCount = 0;
+    for (final source in sources) {
+      final dueDates = _dueIncomePayDates(source, today);
+      if (dueDates.isEmpty) continue;
+
+      DateTime? latest;
+      for (final payDate in dueDates) {
+        final dayStart = DateTime(payDate.year, payDate.month, payDate.day);
+        final dayEnd = DateTime(
+          payDate.year,
+          payDate.month,
+          payDate.day,
+          23,
+          59,
+          59,
+        );
+        final alreadyPosted =
+            await (select(moneyTransactions)..where(
+                  (t) =>
+                      t.source.equals('income_source') &
+                      t.linkedId.equals(source.id) &
+                      t.date.isBetweenValues(dayStart, dayEnd),
+                ))
+                .get()
+                .then((rows) => rows.isNotEmpty);
+        if (alreadyPosted) {
+          latest = payDate;
+          continue;
+        }
+
+        await addTransaction(
+          accountId: source.accountId,
+          categoryId: salaryCategory?.id ?? fallbackIncome?.id,
+          type: 'income',
+          amount: source.amount,
+          date: dayStart,
+          note: source.name,
+          source: 'income_source',
+          linkedId: source.id,
+        );
+        postedCount++;
+        latest = payDate;
+      }
+
+      if (latest != null) {
+        await (update(incomeSources)..where((s) => s.id.equals(source.id)))
+            .write(IncomeSourcesCompanion(lastPostedDate: Value(latest)));
+      }
+    }
+    return postedCount;
+  }
+
+  List<DateTime> _dueIncomePayDates(IncomeSource source, DateTime today) {
+    final start = DateTime(
+      source.startDate.year,
+      source.startDate.month,
+      source.startDate.day,
+    );
+    if (start.isAfter(today)) return const [];
+
+    final lastPosted = source.lastPostedDate;
+    final after = lastPosted == null
+        ? start.subtract(const Duration(days: 1))
+        : DateTime(lastPosted.year, lastPosted.month, lastPosted.day);
+
+    final dates = <DateTime>[];
+    if (source.frequency == 'monthly') {
+      var year = start.year;
+      var month = start.month;
+      while (year < today.year || (year == today.year && month <= today.month)) {
+        final monthEnd = DateTime(year, month + 1, 0);
+        final day = min(source.payDayOfMonth ?? 1, monthEnd.day);
+        final pay = DateTime(year, month, day);
+        if (!pay.isBefore(start) && pay.isAfter(after) && !pay.isAfter(today)) {
+          dates.add(pay);
+        }
+        month++;
+        if (month > 12) {
+          month = 1;
+          year++;
+        }
+      }
+      return dates;
+    }
+
+    final weekday = source.payWeekday ?? DateTime.friday % 7;
+    var cursor = start;
+    while (cursor.weekday % 7 != weekday) {
+      cursor = cursor.add(const Duration(days: 1));
+      if (cursor.isAfter(today)) return dates;
+    }
+    final stepDays = source.frequency == 'biweekly' ? 14 : 7;
+    while (!cursor.isAfter(today)) {
+      if (cursor.isAfter(after)) {
+        dates.add(cursor);
+      }
+      cursor = cursor.add(Duration(days: stepDays));
+    }
+    return dates;
+  }
 
   Future<void> updateCredit(Credit original, CreditsCompanion changes) =>
       transaction(() async {
